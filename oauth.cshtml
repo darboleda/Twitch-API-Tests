@@ -1,0 +1,93 @@
+@using System.Collections
+@using Newtonsoft.Json.Linq
+
+<html>
+
+<body>
+    <a href="~/Chat.cshtml">CHAT</a> <br />
+    @{
+        string code = Request.QueryString["code"];
+    }
+
+    <b>AUTHORIZED</b>
+    <br />
+    Code: @code
+    @{
+        var oauth = TwitchHelper.NotifyCodeReceived(Request.QueryString["code"]);
+        HttpCookie oauthCookie = new HttpCookie("Twitch OAuth", oauth);
+        oauthCookie.Expires = DateTime.Now.AddDays(1);
+
+        Response.SetCookie(oauthCookie);
+
+        dynamic links = TwitchHelper.BlockOnTask<object>(TwitchHelper.GetCommands(), 10000) as dynamic;
+        var data = TwitchHelper.BlockOnTask<JObject>(TwitchHelper.GetRequestWithOauth((string)links.channel, string.Empty, oauth), 10000) as dynamic;
+
+        HttpCookie usernameCookie = new HttpCookie("Twitch Username", (string)data.name);
+        Response.SetCookie(usernameCookie);
+
+        HttpCookie returnUrlCookie = Request.Cookies["Twitch Return"];
+        string returnUrl = (returnUrlCookie != null ? returnUrlCookie.Value : null);
+        if (!string.IsNullOrEmpty(returnUrl))
+        {
+            Response.Redirect("~/" + returnUrl, true);
+        }
+    }
+    <br />
+    Access Token: @oauth
+
+    <pre>@data.ToString()</pre>
+
+    <h1>Channel JSON</h1>
+    @{
+        string putCommand = @"
+        {
+            'channel': {
+                'status': 'THIS IS A TEST'
+            }
+        }
+        ";
+        //dynamic test = TwitchHelper.BlockOnTask<JObject>(TwitchHelper.PutRequestWithOauth((string)links.channel, "s/andipossess/", oauth, putCommand), 10000) as dynamic;
+        dynamic test = TwitchHelper.BlockOnTask<JObject>(TwitchHelper.GetRequestWithOauth((string)links.channel, "", oauth), 10000) as dynamic;
+    }
+    <pre>@test.ToString()</pre>
+
+
+
+    <h1>Follows</h1>
+    @{
+        dynamic follows = TwitchHelper.BlockOnTask<JObject>(TwitchHelper.GetRequest((string)links.channel, "s/andipossess/follows",
+            new KeyValuePair<string, string>("limit", "100")), 10000) as dynamic;
+        int followerCount = (int)follows._total;
+    }
+    @((int)follows._total)
+    <ul>
+
+        @do
+        {
+
+            foreach (dynamic follow in follows.follows)
+            {
+                <li>@follow.user.name - followed @DateHelper.MonthsSince(DateTime.Parse((string)follow.created_at)) months ago</li>
+            }
+
+            follows = TwitchHelper.BlockOnTask<JObject>(TwitchHelper.GetRequest((string)follows._links.next, ""), 10000) as dynamic;
+        } while (follows.follows.Count > 0);
+    </ul>
+
+    <blockquote id="socket" style="font-family: monospace;">
+    </blockquote>
+    <script type="text/javascript" src="~/Scripts/jquery-1.10.2.min.js"></script>
+    <script>
+        var socket = new WebSocket("ws://irc.twitch.tv:6667");
+        socket.onmessage = function(msg)
+        {
+            $("#socket").append(msg);
+        }
+        socket.onopen = function()
+        {
+            $("#socket").append("Socket opened");
+        }
+    </script>
+
+</body>
+</html>

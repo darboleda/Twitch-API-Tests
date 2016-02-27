@@ -1,0 +1,24 @@
+﻿@using Newtonsoft.Json.Linq
+
+@{
+
+    string url = Request.Params["nexturl"];
+
+    dynamic links = TwitchHelper.BlockOnTask<object>(TwitchHelper.GetCommands(), 10000) as dynamic;
+    dynamic follows = (url == null ? 
+        TwitchHelper.BlockOnTask<JObject>(TwitchHelper.GetRequest((string)links.channel, "s/andipossess/follows"), 10000) :
+        TwitchHelper.BlockOnTask<JObject>(TwitchHelper.GetRequest(url, string.Empty), 10000)) as dynamic;
+}
+
+<ul>
+    @foreach (dynamic follow in follows.follows)
+    {
+        <li>@((string)follow.user.name)</li>
+    }
+
+</ul>
+
+<form action="~/followerpages.cshtml" method="post">
+    Next <input type="text" name="nexturl" value="@follows._links.next"/>
+    <input type="submit" value="Submit" />
+</form>

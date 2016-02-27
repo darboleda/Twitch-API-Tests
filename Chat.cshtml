@@ -1,0 +1,205 @@
+﻿@using Newtonsoft.Json.Linq
+
+<html>
+<head>
+    <script type="text/javascript" src="~/Scripts/jquery-1.10.2.min.js"></script>
+</head>
+<body>
+
+    <style>
+        body
+        {
+            background: #222;
+        }
+
+        #container {
+            max-width: 80%;
+            padding: 0;
+            margin: 0 auto;
+        }
+
+        blockquote {
+            margin: 0;
+            height: 80vh;
+            overflow: auto;
+            padding: 0;
+        }
+
+        #socket {
+            background: rgba(20, 20, 20, 1);
+            color: #CCC;
+            min-height: 100%;
+        }
+
+        #socket > div:nth-child(2n)
+        {
+            background: rgba(10, 10, 10, .90);
+        }
+
+        #socket > div
+        {
+            padding: 5px 20px;
+            border-right: solid 1px rgba(255, 255, 255, 0.3);
+            border-bottom: solid 1px rgba(255, 255, 255, 0.3);
+        }
+
+        .displayname {
+            font-weight: bold;
+        }
+
+        form {
+            display: flex;
+            padding: 20px;
+            background: #333;
+
+            align-items: center;
+        }
+
+        form textarea {
+            flex-grow: 1;
+            border: solid 1px rgba(255, 255, 255, .2);
+            border-top: none;
+            background: #111;
+            color: #CCC;
+
+            min-height: 50px;
+            padding: 3px;
+
+            overflow: auto;
+        }
+
+        form button {
+            flex-basis: 100px;
+            background: #749;
+            color: white;
+            border: solid 1px #85A;
+            font-weight: bold;
+            font-family: 'Trebuchet MS';
+
+            height: 30px;
+        }
+
+        form textarea + button
+        {
+            margin-left: 30px;
+        }
+
+        .innards {
+            font-size: 60%;
+            color: #555;
+            white-space: pre-wrap;
+            word-wrap: break-word;
+            margin: 0;
+
+            font-family: Consolas;
+        }
+    </style>
+
+    @{
+        var oauthCookie = Request.Cookies["Twitch OAuth"];
+        var usernameCookie = Request.Cookies["Twitch Username"];
+        string oauth = (oauthCookie == null ? "" : oauthCookie.Value);
+        string username = (usernameCookie == null ? "" : usernameCookie.Value);
+    }
+
+    <div id="container">
+        <blockquote>
+            <div id="socket"></div>
+        </blockquote>
+
+        <form id="chatForm">
+            <textarea id="response" type="text"></textarea><button id="submit">Submit</button>
+        </form>
+    </div>
+
+    @if (!string.IsNullOrWhiteSpace(oauth) && !string.IsNullOrWhiteSpace(username))
+    {
+        <script>
+            var ws = null;
+            $(document).ready(function () {
+                var connection = "ws://localhost:53099/ChatHandler.ashx?username=@username&oauth=@oauth";
+                ws = new WebSocket(connection);
+                ws.onmessage = function (msgEvent) {
+
+                    var socket = $("#socket");
+                    var length = socket.children().length;
+                    if (length > 60)
+                    {
+                        $("#socket > div:nth-child(-n+" + (length - 60) + ")").remove();
+                    }
+
+                    socket.append("<div>" + FormMessage(msgEvent.data) + "</div>");
+                    var scroll = $("blockquote");
+                    scroll.scrollTop(scroll[0].scrollHeight);
+                }
+                ws.onerror = function (event) {
+                    $("#socket").append("ERROR: " + event.data);
+                }
+
+                $("#chatForm").submit(function (e) {
+                    e.preventDefault();
+                    if (ws.readyState == WebSocket.OPEN) {
+                        ws.send($("#response").val() + "\n");
+                        $("#response").val("");
+                    }
+                    $("#response").focus();
+                });
+
+                $("form textarea").keypress(function (ev) {
+                    if (ev.which == 13)
+                    {
+                        ev.preventDefault();
+                        $(this).parent("form").submit();
+                    }
+                });
+            });
+
+            function FormMessage(messageJson)
+            {
+                try{
+                    var parsed = $.parseJSON(messageJson);
+                    if ('MessageRaw' in parsed)
+                    {
+                        var span = $(document.createElement("span"));
+                        if (parsed.DisplayName) {
+                            span.append(parsed.DisplayName);
+                        }
+                        else
+                        {
+                            span.append(parsed.UserName);
+                        }
+                        span.addClass("displayname");
+                        span.css("color", RemapColor(parsed.Color));
+
+                        return span[0].outerHTML + ": " + parsed.MessageRaw;
+                    }
+                }
+                catch (err) {
+                }
+                
+                var pre = $(document.createElement("pre"));
+                pre.addClass("innards");
+                pre.append(messageJson);
+                return pre[0].outerHTML;
+                
+            }
+
+            var colorMap =
+            {
+                "#0000FF": "#4d4dff",
+                "#021497": "#4f63fc"
+            }
+            function RemapColor(color)
+            {
+                if (color in colorMap) return colorMap[color];
+                return color;
+            }
+        </script>
+    }
+    else
+    {
+        Response.AppendCookie(new HttpCookie("Twitch Return", "chat"));
+        Response.Redirect(TwitchHelper.BuildAuthUrl());
+    }
+</body>
+</html>
